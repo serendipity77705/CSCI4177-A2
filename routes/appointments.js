@@ -4,16 +4,10 @@ import { auth } from "../auth.js";
 
 const router = express.Router();
 
-/**
- * GET appointments
- * Patient:  /api/auth/patient/:id/appointments
- * Physician:/api/auth/phys/:id/appointments
- * Admin:    /api/auth/admin/appointments?patientId=&physicianId=
- */
 router.get("/patient/:id/appointments", auth, async (req, res) => {
   try {
     const requestedId = Number(req.params.id);
-    const user = req.user; // { id, role }
+    const user = req.user;
 
     if (user.role !== "patient" && user.id !== requestedId) {
       return res.status(403).json({ error: "you do not have access to this data" });
@@ -86,10 +80,6 @@ router.get("/admin/appointments", auth, async (req, res) => {
   }
 });
 
-/**
- * POST /api/auth/appointments
- * Booking endpoint
- */
 router.post("/appointments", auth, async (req, res) => {
   try {
     const user = req.user;
@@ -103,7 +93,6 @@ router.post("/appointments", auth, async (req, res) => {
       reason,
     } = req.body;
 
-    // basic field validation
     if (!patientId || !physicianId || !createdBy || !startTime || !endTime || !reason) {
       return res.status(400).json({ error: "missing or invalid fields" });
     }
@@ -113,29 +102,32 @@ router.post("/appointments", auth, async (req, res) => {
     return res.status(404).json({ error: "creator id not found" });
     }
 
-    // role rules
-    // role rules based on creator
     if (creator.userRole === "PATIENT") {
-        if (creator.id !== patientId) {
-            return res.status(403).json({ error: "patient cannot book for another patient" });
-        }
-    }
-    else if (creator.userRole === "PHYSICIAN") {
-        if (creator.id !== physicianId) {
-            return res.status(403).json({ error: "physician cannot book for another physician" });
-        }
-    }
+    const [[patientProfile]] = await pool.query(
+      "SELECT id FROM patients WHERE userID = ?",
+      [creator.id]
+    );
 
-    else if (creator.userRole === "ADMIN") {
-  // admin can book for anyone
+    if (!patientProfile || patientProfile.id !== patientId) {
+      return res.status(403).json({ error: "patient cannot book for another patient" });
     }
+}
 
-    else {
+else if (creator.userRole === "PHYSICIAN") {
+    const [[physicianProfile]] = await pool.query(
+      "SELECT id FROM physicians WHERE userID = ?",
+      [creator.id]
+    );
+
+    if (!physicianProfile || physicianProfile.id !== physicianId) {
+      return res.status(403).json({ error: "physician cannot book for another physician" });
+    }
+}
+
+else if (creator.userRole !== "ADMIN") {
     return res.status(400).json({ error: "invalid creator role" });
-    }
+}
 
-
-    // conflict check: overlapping appointments
     const [conflicts] = await pool.query(
       `SELECT * FROM appointments
        WHERE physicianId = ?

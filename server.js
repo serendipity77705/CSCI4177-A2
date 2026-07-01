@@ -8,6 +8,9 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.get("/", (req, res) => {
+  res.send("IntelliCare API is running");
+});
 app.use("/api/auth", authentication);
 
 app.use("/api/auth", appointments);
